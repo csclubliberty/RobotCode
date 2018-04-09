@@ -1,0 +1,190 @@
+/*
+Copyright (c) 2016 Robert Atkinson
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
+
+Redistributions of source code must retain the above copyright notice, this list
+of conditions and the following disclaimer.
+
+Redistributions in binary form must reproduce the above copyright notice, this
+list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+Neither the name of Robert Atkinson nor the names of his contributors may be used to
+endorse or promote products derived from this software without specific prior
+written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
+LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+package org.firstinspires.ftc.teamcode;
+
+import com.qualcomm.hardware.modernrobotics.ModernRoboticsAnalogOpticalDistanceSensor;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.LightSensor;
+import com.qualcomm.robotcore.hardware.OpticalDistanceSensor;
+
+/**
+ * This file illustrates the concept of driving up to a line and then stopping.
+ * It uses the common Pushbot hardware class to define the drive on the robot.
+ * The code is structured as a LinearOpMode
+ *
+ * The code shows using two different light sensors:
+ *   The Primary sensor shown in this code is a legacy NXT Light sensor (called "sensor_light")
+ *   Alternative "commented out" code uses a MR Optical Distance Sensor (called "sensor_ods")
+ *   instead of the LEGO sensor.  Chose to use one sensor or the other.
+ *
+ *   Setting the correct WHITE_THRESHOLD value is key to stopping correctly.
+ *   This should be set half way between the light and dark values.
+ *   These values can be read on the screen once the OpMode has been INIT, but before it is STARTED.
+ *   Move the senso on asnd off the white line and not the min and max readings.
+ *   Edit this code to make WHITE_THRESHOLD half way between the min and max.
+ *
+ * Use Android Studios to Copy this Class, and Paste it into your team's code folder with a new name.
+ * Remove or comment out the @Disabled line to add this opmode to the Driver Station OpMode list
+ */
+
+@Autonomous(name="Pushbot: Auto Drive To Line", group="Pushbot")
+
+public class PushbotAutoDriveToLine_Linear extends LinearOpMode {
+
+    /* Declare OpMode members. */
+    HardwarePushbot robot   = new HardwarePushbot();   // Use a Pushbot's hardware
+    // could also use HardwarePushbotMatrix class.
+    //LightSensor             lightSensor;      // Primary LEGO Light sensor,
+    OpticalDistanceSensor opticalDistanceSensor;   // Alternative MR ODS sensor
+
+    // Define our states
+    static final int        STATE_STOPPED = 1;
+    static final int        STATE_STARTED = 2;
+    static final int        STATE_SEEKING_LINE = 3;
+    static final int        STATE_FOUND_LINE = 4;
+
+    static final double     WHITE_THRESHOLD = 0.2;// spans between 0.1 - 0.5 from dark to light
+    static final double     APPROACH_SPEED  = 0.5;
+    static final double     REVERSE_SPEED   = -0.5;
+
+    public int              STATE = STATE_STOPPED;
+
+    @Override
+    public void runOpMode() {
+
+        /* Initialize the drive system variables.
+         * The init() method of the hardware class does all the work here
+         */
+        robot.init(hardwareMap);
+
+        // If there are encoders connected, switch to RUN_USING_ENCODER mode for greater accuracy
+        // robot.leftMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        // robot.rightMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        // get a reference to our Light Sensor object.
+        opticalDistanceSensor = hardwareMap.opticalDistanceSensor.get("ods");  // Alternative MR ODS sensor.
+
+        // turn on LED of light sensor.
+        opticalDistanceSensor.enableLed(true);
+
+        // Send telemetry message to signify robot waiting;
+        telemetry.addData("Status", "Ready to run");    //
+        telemetry.update();
+
+        while (!(isStarted() || isStopRequested())) {
+
+            // Display the light level while we are waiting to start
+            telemetry.addData("Light Level", opticalDistanceSensor.getLightDetected());
+            telemetry.update();
+            idle();
+        }
+
+        STATE = STATE_STOPPED;
+
+        while (true) {
+            telemetry.addData("opmode", opModeIsActive());
+            telemetry.update();
+            switch (STATE) {
+                // If we are initialized but not running
+                case STATE_STOPPED:
+
+                    if (!(isStarted() || isStopRequested())) {
+
+                        // Display the light level while we are waiting to start
+                        telemetry.addData("Light Level", opticalDistanceSensor.getLightDetected());
+                        telemetry.update();
+                        idle();
+                    } else {
+                        STATE = STATE_STARTED;
+                    }
+                    break;
+
+                // Someone pressed GO!
+                case STATE_STARTED:
+                    // Start the robot moving forward, and then begin looking for a white line.
+                    robot.leftMotor.setPower(APPROACH_SPEED);
+                    robot.rightMotor.setPower(APPROACH_SPEED);
+                    STATE = STATE_SEEKING_LINE;
+                    break;
+                // We are moving forward looking for the line/light
+                case STATE_SEEKING_LINE:
+                    if (opticalDistanceSensor.getLightDetected() >= WHITE_THRESHOLD) {
+                        STATE = STATE_FOUND_LINE;
+                    }
+                    break;
+                case STATE_FOUND_LINE:
+                    // Stop all motors for 1s
+                    robot.leftMotor.setPower(0);
+                    robot.rightMotor.setPower(0);
+                    sleep(1000);
+
+                    // Reverse all motors for 2s
+                    robot.leftMotor.setPower(REVERSE_SPEED);
+                    robot.rightMotor.setPower(REVERSE_SPEED);
+                    sleep(2000);
+
+                    // Twist
+                    robot.leftMotor.setPower(APPROACH_SPEED);
+                    robot.rightMotor.setPower(REVERSE_SPEED);
+                    sleep(2000);
+
+                    // Stop all motors for 1s
+                    robot.leftMotor.setPower(0);
+                    robot.rightMotor.setPower(0);
+                    sleep(1000);
+
+                    // Go forward again
+                    STATE = STATE_STARTED;
+
+                    break;
+            }
+            // Things here get run every time regardless of the current state
+
+            // Display the light level while we are looking for the line
+            telemetry.addData("Light Level",  opticalDistanceSensor.getLightDetected());
+            telemetry.addData("State",  STATE);
+            telemetry.update();
+
+            // If STOP was clicked set the state to Stopped again
+            if (isStopRequested()) {
+                STATE = STATE_STOPPED;
+                robot.leftMotor.setPower(0);
+                robot.rightMotor.setPower(0);
+            }
+        }
+
+    }
+
+}
